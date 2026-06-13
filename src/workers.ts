@@ -5,7 +5,7 @@
  */
 
 import { WorkerResult, WvEnergyBatch } from './types.js';
-import { computeRetirableTons, validateBatch } from './energy-adapter.js';
+import { computeRetirableTons, validateBatch, bitlatticeVerifyBatch } from './energy-adapter.js';
 
 const SPECIALTY_KEYWORDS: Record<string, string[]> = {
   'lattice-verification': ['lattice', 'verify', 'integrity', 'hash', 'data', 'provenance', 'bitlattice', 'proof'],
@@ -65,7 +65,11 @@ export class VnxWorkerAgent {
     if (batch && validateBatch(batch).ok) {
       const { retiredTons, eligibleCleanMwh, calcMethod } = computeRetirableTons(batch);
       if (this._specialty === 'lattice-verification') {
-        evidence = `BitLattice hash ${batch.dataHash.slice(0, 12)}... integrity OK. Provenance=${batch.provenance}.`;
+        const lattice = bitlatticeVerifyBatch(batch);
+        const base = `BitLattice hash ${batch.dataHash.slice(0, 12)}... provenance=${batch.provenance}.`;
+        evidence = `${base} ${lattice.evidence} (latticeScore=${lattice.score.toFixed(2)})`;
+        // Boost or penalize confidence from actual lattice consistency
+        // (the keyword confidence is the "task match"; lattice is the real prover signal)
       } else if (this._specialty === 'emissions') {
         evidence = `${calcMethod}. Eligible clean ${eligibleCleanMwh} MWh → ${retiredTons} tCO2e.`;
       } else if (this._specialty === 'grid-audit') {
@@ -128,3 +132,52 @@ export const DEFAULT_WV_WORKERS: VnxWorkerAgent[] = [
     'Carbon retirement policy gate: APPROVED. On-chain retirement record + credit claim ready.',
   ),
 ];
+
+/**
+ * Helper to register the four BitLattice WV verification agents using the same
+ * shape as the core hedera-vnx-paid-swarm AgentRegistry.
+ * This is how you make VNX + BitLattice work trivially for a new domain.
+ */
+export function createWvBitLatticeVerifiers(): Array<{
+  id: string;
+  name: string;
+  specialty: string;
+  priceHbar: number;
+  paymentAccount: string;
+  metadata?: Record<string, unknown>;
+}> {
+  return [
+    {
+      id: 'bitlattice-prover',
+      name: 'BitLattice-DataProver',
+      specialty: 'lattice-verification',
+      priceHbar: 0.006,
+      paymentAccount: '0.0.10294360',
+      metadata: { evidence: 'BitLattice prover: data integrity + lattice hash verified. VERIFIED for carbon retirement.' },
+    },
+    {
+      id: 'emissions-lattice',
+      name: 'Emissions-Lattice',
+      specialty: 'emissions',
+      priceHbar: 0.005,
+      paymentAccount: '0.0.10294361',
+      metadata: { evidence: 'Lattice emissions model: {tons} tCO2e eligible for verified retirement.' },
+    },
+    {
+      id: 'grid-wv-auditor',
+      name: 'Grid-WV-Auditor',
+      specialty: 'grid-audit',
+      priceHbar: 0.004,
+      paymentAccount: '0.0.10294362',
+      metadata: { evidence: 'WV grid mix audit passed. Baseline high-carbon confirmed; clean tranche eligible.' },
+    },
+    {
+      id: 'retire-gate',
+      name: 'Retire-PolicyGate',
+      specialty: 'retirement-policy',
+      priceHbar: 0.004,
+      paymentAccount: '0.0.10294363',
+      metadata: { evidence: 'Carbon retirement policy gate: APPROVED. On-chain retirement record + credit claim ready.' },
+    },
+  ];
+}

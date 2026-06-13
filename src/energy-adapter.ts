@@ -101,3 +101,70 @@ export function validateBatch(batch: WvEnergyBatch): { ok: boolean; reason?: str
   }
   return { ok: true };
 }
+
+/**
+ * BitLattice-style consistency verification for an energy batch.
+ * Treats the data fields as a "lattice" of constraints (sums, proportions, bounds, provenance).
+ * Returns a score [0,1] and structured evidence. This is the "prover" heart of BitLattice workers.
+ */
+export function bitlatticeVerifyBatch(batch: WvEnergyBatch): {
+  consistent: boolean;
+  score: number;
+  evidence: string;
+  violations: string[];
+} {
+  const violations: string[] = [];
+  let score = 1.0;
+
+  const total = Object.values(batch.bySource).reduce((a, b) => a + b, 0);
+  const clean = (batch.bySource.wind || 0) + (batch.bySource.solar || 0) + (batch.bySource.other || 0) * 0.7;
+  const cleanShare = total > 0 ? clean / total : 0;
+
+  // Lattice constraint 1: source sum matches net
+  if (Math.abs(total - batch.netGenerationMwh) > 5000) {
+    violations.push('source-sum-mismatch');
+    score -= 0.25;
+  }
+
+  // Lattice constraint 2: reasonable WV coal-dominant mix (historical baseline ~70%+ coal)
+  const coalShare = (batch.bySource.coal || 0) / total;
+  if (coalShare < 0.35) {
+    violations.push('coal-share-too-low-for-wv-baseline');
+    score -= 0.15;
+  }
+  if (coalShare > 0.95) {
+    violations.push('coal-share-extreme');
+    score -= 0.1;
+  }
+
+  // Lattice constraint 3: clean share bounds for credit eligibility
+  if (cleanShare < 0.05) {
+    violations.push('insufficient-clean-for-retirement-claim');
+    score -= 0.2;
+  }
+
+  // Lattice constraint 4: provenance & hash presence (tamper evidence)
+  if (!['EIA', 'PJM', 'ISO', 'verified', 'manual'].includes(batch.provenance)) {
+    violations.push('unknown-provenance');
+    score -= 0.1;
+  }
+  if (!batch.dataHash || batch.dataHash.length < 16) {
+    violations.push('weak-data-hash');
+    score -= 0.3;
+  }
+
+  // Lattice constraint 5: consumption vs generation sanity (small import/export ok)
+  if (batch.totalConsumptionMwh && Math.abs(batch.totalConsumptionMwh - total) > total * 0.4) {
+    violations.push('consumption-generation-imbalance');
+    score -= 0.1;
+  }
+
+  const consistent = violations.length === 0;
+  const finalScore = Math.max(0, Math.min(1, score));
+
+  const evidence = consistent
+    ? `BitLattice lattice consistent (cleanShare=${(cleanShare * 100).toFixed(1)}%, coal=${(coalShare * 100).toFixed(1)}%). No constraint violations.`
+    : `BitLattice violations: ${violations.join(', ')}. Adjusted score ${finalScore.toFixed(2)}.`;
+
+  return { consistent, score: finalScore, evidence, violations };
+}

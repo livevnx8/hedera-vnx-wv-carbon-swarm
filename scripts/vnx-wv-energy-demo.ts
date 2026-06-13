@@ -9,8 +9,8 @@
 import { Command } from 'commander';
 import { WvEnergyCarbonCoordinator } from '../src/coordinator.js';
 import { HederaPaymentRail } from '../src/payment-rail.js';
-import { DEFAULT_WV_WORKERS } from '../src/workers.js';
-import { fetchWvEnergyBatch, SAMPLE_WV_HIGH_CLEAN } from '../src/energy-adapter.js';
+import { DEFAULT_WV_WORKERS, createWvBitLatticeVerifiers } from '../src/workers.js';
+import { fetchWvEnergyBatch, SAMPLE_WV_HIGH_CLEAN, bitlatticeVerifyBatch } from '../src/energy-adapter.js';
 import { WvHcsPublisher, DryRunWvHcsPublisher } from '../src/hcs-publisher.js';
 import { WvVerificationReceipt } from '../src/types.js';
 
@@ -44,6 +44,16 @@ async function main() {
     provenance: batch.provenance,
     dataHash: batch.dataHash.slice(0, 16) + '...',
   }, null, 2));
+
+  // Demonstrate the BitLattice lattice prover primitive (works for any domain data)
+  const latticeCheck = bitlatticeVerifyBatch(batch);
+  console.log(`\nBitLattice consistency check: score=${latticeCheck.score.toFixed(2)} consistent=${latticeCheck.consistent}`);
+  console.log(`  ${latticeCheck.evidence}\n`);
+
+  // Show the registry pattern (same as core hedera-vnx-paid-swarm AgentRegistry)
+  const registryRecords = createWvBitLatticeVerifiers();
+  console.log(`Registered ${registryRecords.length} BitLattice verifiers via createWvBitLatticeVerifiers() (ready for AgentRegistry or VnxSwarmClient in the core package):`);
+  registryRecords.forEach(r => console.log(`  - ${r.name} (${r.specialty}) @ ${r.priceHbar} HBAR`));
   console.log('');
 
   const maxHbar = 0.01;

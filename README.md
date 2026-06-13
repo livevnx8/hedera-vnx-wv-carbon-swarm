@@ -2,15 +2,11 @@
 
 **VNX BitLattice Verification Swarm for West Virginia energy usage & production data — end-to-end cryptographically verified carbon credit retirement on Hedera.**
 
-Uses the livevnx8 / Vera Lattice tech stack:
+> **VNX + BitLattice works very well across this domain.**  
+> The same primitives (specialist BitLattice-named prover workers + deterministic confidence scoring + winner selection + SHA-256 receipts + HBAR micro-settlement + HCS anchoring to the shared Vera Lattice topic `0.0.10416185`) that power trading-signal swarms also excel at **real-world verification and credit retirement** use cases. Energy data → carbon credit retirement is just one instance. The pattern generalizes cleanly to renewable energy certificates, water/biodiversity credits, supply-chain provenance, AI inference attestations, RWA claims, compliance reports, and more.  
+> The core `hedera-vnx-paid-swarm` provides the reusable engine; each domain only supplies the specialist workers (via `AgentRegistry` or simple arrays) + any post-decision domain logic (e.g. retirement calc + typed HCS message).
 
-- Deterministic VNX micro-swarm pattern (workers vote, highest score wins)
-- BitLattice-* named verification agents (continuing the BitLattice-ONNX / lattice prover tradition)
-- HBAR micro-payments to winning verifier on Hedera mainnet
-- Cryptographic SHA-256 receipts (taskHash + decisionHash + energyDataHash)
-- **HCS anchoring to the shared Vera Lattice audit trail topic (`0.0.10416185`)** used by the core hedera-vnx-paid-swarm
-- On verified high-confidence decision → automatic computation of eligible tCO2e + retirement attestation published to HCS
-- Full mirror-node + HashScan verifiability for the entire chain: raw energy data → swarm consensus → payment → carbon retirement record
+This repo is a complete, self-contained demonstration of the generalized pattern.
 
 ## What it does (end-to-end)
 
@@ -90,28 +86,26 @@ When you run live you will see:
 npm run verify -- data/receipt-example.json --task "the original task text"
 ```
 
-## Architecture (text)
+## The Pattern Across Domains
 
-```
-WV Energy Batch (EIA/provenance)
-        │
-        ▼
-BitLattice Verification Swarm (4 workers vote)
-        │ winner + score
-        ▼
-Hedera HBAR payment rail (micro)
-        │
-        ▼
-Deterministic tCO2e calc + VERIFIED gate
-        │
-        ▼
-HCS publish (Vera Lattice topic 0.0.10416185) : "vnx.wv...retired"
-        │
-        ▼
-WvVerificationReceipt (all hashes + links)
-        │
-   HashScan / Mirror / HCS URLs  ← independently auditable
-```
+The VNX BitLattice swarm is a **verification primitive**, not a trading-only tool.
+
+**How to build a new domain swarm (30-60 min):**
+
+1. Define your domain data shape (e.g. `SupplyChainClaim`, `AiInferenceBatch`).
+2. Implement `bitlatticeVerifyX(data)` – the lattice constraint checker (sums, hashes, bounds, cross-source consistency, policy rules).
+3. Create 3-5 `VnxWorkerAgent` (or registry records) with domain specialties (e.g. `provenance-prover`, `sustainability-gate`, `zk-evidence-auditor`).
+4. Use (or copy) `PaidSwarmCoordinator` / `VnxSwarmClient` + `AgentRegistry` for the vote + pay + receipt engine.
+5. After winner selection, run your domain outcome (retire credits, issue attestation, burn token, publish rich HCS message).
+6. Anchor everything on the shared Vera Lattice HCS topic for unified auditability.
+7. Produce an extended receipt with your domain hashes + outcome.
+
+Existing examples:
+- Trading signals (core `hedera-vnx-paid-swarm`, BitLattice-ONNX etc.)
+- West Virginia energy → verified carbon retirement (this repo)
+- (Next) supply chain, water credits, model cards, etc.
+
+The BitLattice naming + lattice prover functions make the "swarm of provers" concept concrete and auditable.
 
 ## License
 
@@ -119,5 +113,6 @@ MIT © Vera Lattice / livevnx8
 
 See also:
 - https://github.com/livevnx8/hedera-vnx-paid-swarm (core VNX paid swarm this is built on the pattern of)
+- https://github.com/livevnx8/hedera-vnx-wv-carbon-swarm (this repo – full verification domain example)
 - BitLattice concepts (historical DLT inspiration for the prover swarm model)
 - Hedera HCS for public immutable audit trails

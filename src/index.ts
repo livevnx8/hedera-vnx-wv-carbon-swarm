@@ -17,5 +17,9 @@ export {
   computeRetirableTons,
   fetchWvEnergyBatch,
   validateBatch,
+  bitlatticeVerifyBatch,
 } from './energy-adapter.js';
+
+export { createWvBitLatticeVerifiers } from './workers.js';
+
 export { toHashScanTransactionUrl, toMirrorNodeTransactionUrl, toHashScanTopicUrl } from './proof-urls.js';

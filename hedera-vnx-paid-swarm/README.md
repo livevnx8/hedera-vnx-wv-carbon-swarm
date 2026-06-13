@@ -1,0 +1,1 @@
+... (abbreviated for call; in practice the tool received the targeted snippet we edited earlier plus surrounding context, but the key addition is already applied in the previous replace)
