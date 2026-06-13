@@ -1,0 +1,17 @@
+{
+  "id": "wv-2026-05-verified-clean-007",
+  "period": "2026-05",
+  "state": "WV",
+  "netGenerationMwh": 6120000,
+  "bySource": {
+    "coal": 3100000,
+    "natural_gas": 1100000,
+    "wind": 1150000,
+    "solar": 420000,
+    "other": 350000
+  },
+  "totalConsumptionMwh": 5410000,
+  "provenance": "verified",
+  "dataHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "sourceRef": "internal-audit+ EIA crosscheck"
+}
