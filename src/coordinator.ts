@@ -3,9 +3,11 @@
  * Dispatches to BitLattice verification workers, selects winner, pays micro HBAR (VNX pattern),
  * computes retirement tons, anchors retirement attestation to Vera Lattice HCS topic,
  * and emits a full cryptographic WvVerificationReceipt.
+ * BIND HCS-PAYMENT-RAIL-BIND-011: pass identity into the rail; deny must not pay.
+ * Publisher seq after HCS publish is observation metadata, never caller identity.
  */
 
-import { WorkerVote, WvVerificationReceipt, PaymentRail, CarbonRetirement, WvEnergyBatch } from './types.js';
+import { WorkerVote, WvVerificationReceipt, PaymentRail, CarbonRetirement, WvEnergyBatch, CallerIdentity, HcsObservation } from './types.js';
 import { VnxWorkerAgent } from './workers.js';
 import { WvReceiptBuilder } from './receipt-builder.js';
 import { computeRetirableTons, validateBatch } from './energy-adapter.js';
@@ -32,7 +34,7 @@ export class WvEnergyCarbonCoordinator {
     private _hcsPublisher?: WvHcsPublisher | DryRunWvHcsPublisher,
   ) {}
 
-  async run(taskDescription: string, batch?: WvEnergyBatch): Promise<WvVerificationReceipt> {
+  async run(taskDescription: string, batch?: WvEnergyBatch, identity?: CallerIdentity): Promise<WvVerificationReceipt> {
     const builder = new WvReceiptBuilder();
     const energyBatch = batch;
     const energyDataHash = energyBatch?.dataHash ?? this._shaFallback(taskDescription);
@@ -78,6 +80,7 @@ export class WvEnergyCarbonCoordinator {
     }
 
     // 4. Payment (micro HBAR to winning verification worker, or plan-only)
+    // BIND: pass caller identity; rail denies UNRESOLVED/DISAGREEMENT without transferHbar
     let payment;
     if (this._config.planOnly) {
       payment = {
@@ -89,11 +92,14 @@ export class WvEnergyCarbonCoordinator {
       };
     } else {
       const memo = `VNX-WV:${winner.workerId}:${energyBatch?.id ?? 'batch'}:${carbon.retiredTons}t`;
-      payment = await this._paymentRail.transfer(winner.paymentAccount, winner.priceHbar, memo);
+      payment = await this._paymentRail.transfer(winner.paymentAccount, winner.priceHbar, memo, identity);
     }
 
     // 5. Anchor retirement attestation to Vera Lattice HCS (shared topic)
-    let hcsInfo: { topicId: string; sequenceNumber?: string; transactionId?: string } | undefined;
+    // BIND 011: publisher seq is HCS observation metadata. Do NOT copy onto caller
+    // sequence_number / identity_status. Mirror verifies a claimed canonical integer;
+    // it must not mint missing identity from publish.
+    let hcsInfo: HcsObservation | undefined;
     if (carbon.verified && carbon.retiredTons > 0 && this._hcsPublisher) {
       const msg: WvHcsMessage = (this._hcsPublisher as any).constructor.buildWvRetirementMessage
         ? (this._hcsPublisher as any).constructor.buildWvRetirementMessage({
@@ -124,13 +130,16 @@ export class WvEnergyCarbonCoordinator {
       if (pub.status === 'success') {
         hcsInfo = {
           topicId: pub.topicId,
-          sequenceNumber: pub.sequenceNumber,
+          publisher_sequence_number: pub.sequenceNumber,
+          observation_kind: 'publisher_hcs_observation',
+          not_caller_identity: true,
           transactionId: pub.transactionId,
         };
       }
     }
 
     // 6. Final receipt (decisionHash incorporates carbon + energy)
+    // identity_status comes from payment/identity-gate only — never from publisher seq
     const receipt = builder.build(
       taskDescription,
       energyDataHash,

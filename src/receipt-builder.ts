@@ -2,10 +2,12 @@
  * WvEnergy Verification Receipt Builder
  * Cryptographic receipts for WV energy swarm decisions + carbon retirements.
  * Task hash + decision hash + energy data hash + carbon outcome.
+ * BIND HCS-PAYMENT-RAIL-BIND-011: persist identity_status; never success-receipt on deny.
+ * Publisher HCS seq is observation metadata, never caller identity.
  */
 
 import { createHash } from 'crypto';
-import { WvVerificationReceipt, WorkerVote, PaymentResult, CarbonRetirement } from './types.js';
+import { WvVerificationReceipt, WorkerVote, PaymentResult, CarbonRetirement, HcsObservation } from './types.js';
 import { toHashScanTransactionUrl, toMirrorNodeTransactionUrl } from './proof-urls.js';
 
 export class WvReceiptBuilder {
@@ -18,20 +20,26 @@ export class WvReceiptBuilder {
     selected: WorkerVote,
     payment: PaymentResult,
     carbon: CarbonRetirement,
-    hcsInfo?: { topicId: string; sequenceNumber?: string; transactionId?: string },
+    hcsInfo?: HcsObservation,
   ): WvVerificationReceipt {
     const timestamp = Date.now();
     const taskHash = this._sha256(taskDescription);
     const decisionPayload = `${selected.workerId}:${selected.score}:${payment.transactionId ?? 'no-tx'}:${taskHash}:${energyDataHash}:${carbon.retiredTons}`;
     const decisionHash = this._sha256(decisionPayload);
-
+    const identityStatus = payment.identity_status;
+    const blocked = identityStatus === 'unresolved' || identityStatus === 'disagreement' || !identityStatus;
     const proofStatus =
-      payment.status === 'success' && payment.network === 'mainnet' && !!payment.transactionId
+      !blocked &&
+      payment.status === 'success' &&
+      payment.network === 'mainnet' &&
+      !!payment.transactionId
         ? 'mainnet_confirmed'
         : 'not_mainnet_proof';
+    const sha256Success = proofStatus === 'mainnet_confirmed' && payment.status === 'success' && !blocked;
 
-    const hcsUrl = hcsInfo?.sequenceNumber
-      ? `https://hashscan.io/mainnet/topic/${hcsInfo.topicId}/${hcsInfo.sequenceNumber}`
+    const publisherSeq = hcsInfo?.publisher_sequence_number;
+    const hcsUrl = publisherSeq
+      ? `https://hashscan.io/mainnet/topic/${hcsInfo!.topicId}/${publisherSeq}`
       : undefined;
 
     return {
@@ -64,17 +72,23 @@ export class WvReceiptBuilder {
       decisionHash,
       hcsMessage: hcsInfo ? {
         topicId: hcsInfo.topicId,
-        sequenceNumber: hcsInfo.sequenceNumber,
+        publisher_sequence_number: hcsInfo.publisher_sequence_number,
+        observation_kind: 'publisher_hcs_observation',
+        not_caller_identity: true,
         transactionId: hcsInfo.transactionId,
       } : undefined,
       proofStatus,
-      explorerUrl: proofStatus === 'mainnet_confirmed' && payment.transactionId
+      explorerUrl: sha256Success && payment.transactionId
         ? toHashScanTransactionUrl(payment.transactionId)
         : undefined,
-      mirrorNodeUrl: proofStatus === 'mainnet_confirmed' && payment.transactionId
+      mirrorNodeUrl: sha256Success && payment.transactionId
         ? toMirrorNodeTransactionUrl(payment.transactionId)
         : undefined,
       hcsUrl,
+      identity_status: identityStatus,
+      caller_canonical_present: payment.caller_canonical_present,
+      manufactured: payment.manufactured,
+      mirror_bytes_match: payment.mirror_bytes_match,
     };
   }
 

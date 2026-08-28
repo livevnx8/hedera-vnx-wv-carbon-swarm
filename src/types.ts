@@ -2,7 +2,12 @@
  * VNX BitLattice WV Energy Carbon Verification Swarm — Shared Types
  * Extends VNX swarm patterns for West Virginia energy data verification
  * and cryptographically anchored carbon credit retirement.
+ * BIND HCS-PAYMENT-RAIL-BIND-011: identity_status on payment + receipt.
  */
+
+import type { CallerIdentity, IdentityStatus } from './identity-gate.js';
+
+export type { CallerIdentity, IdentityStatus } from './identity-gate.js';
 
 export interface WvEnergyBatch {
   id: string;
@@ -60,6 +65,10 @@ export interface PaymentResult {
   recipient: string;
   consensusTimestampMs?: number;
   error?: string;
+  identity_status?: IdentityStatus;
+  caller_canonical_present?: boolean;
+  manufactured?: boolean;
+  mirror_bytes_match?: boolean;
 }
 
 export interface CarbonRetirement {
@@ -70,6 +79,15 @@ export interface CarbonRetirement {
   evidence: string;
   hcsSequence?: string;
   retirementTxId?: string; // HTS transfer/burn if performed
+}
+
+/** HCS observation after publish. Publisher seq is metadata, never caller identity. */
+export interface HcsObservation {
+  topicId: string;
+  publisher_sequence_number?: string;
+  observation_kind?: 'publisher_hcs_observation';
+  not_caller_identity?: true;
+  transactionId?: string;
 }
 
 export interface WvVerificationReceipt {
@@ -100,19 +118,24 @@ export interface WvVerificationReceipt {
   payment: PaymentResult;
   carbon: CarbonRetirement;
   decisionHash: string;
-  hcsMessage?: {
-    topicId: string;
-    sequenceNumber?: string;
-    transactionId?: string;
-  };
+  hcsMessage?: HcsObservation;
   proofStatus: 'mainnet_confirmed' | 'not_mainnet_proof';
   explorerUrl?: string;
   mirrorNodeUrl?: string;
   hcsUrl?: string;
+  identity_status?: IdentityStatus;
+  caller_canonical_present?: boolean;
+  manufactured?: boolean;
+  mirror_bytes_match?: boolean;
 }
 
 export interface PaymentRail {
-  transfer(toAccountId: string, amountHbar: number, memo?: string): Promise<PaymentResult>;
+  transfer(
+    toAccountId: string,
+    amountHbar: number,
+    memo?: string,
+    identity?: CallerIdentity,
+  ): Promise<PaymentResult>;
 }
 
 export interface HcsPublishResult {
