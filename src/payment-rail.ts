@@ -3,7 +3,7 @@
  * BIND HCS-PAYMENT-RAIL-BIND-011: identity_status gate before transferHbar.
  */
 import { PaymentRail, PaymentResult, CallerIdentity } from './types.js';
-import { HederaClient } from './hedera-client.js';
+import { HederaClient, issueRailPassedToken } from './hedera-client.js';
 import {
   resolveCallerIdentity,
   identityBlocksPayment,
@@ -19,9 +19,20 @@ export class HederaPaymentRail implements PaymentRail {
   private _client: HederaClient | null = null;
 
   constructor(private _config: PaymentRailConfig) {
-    const network = (process.env['HEDERA_NETWORK'] ?? 'mainnet') as string;
-    if (_config.requireMainnet && network !== 'mainnet') {
-      throw new Error(`Live run requires HEDERA_NETWORK=mainnet (got ${network}). Use --plan-only.`);
+    if (_config.requireMainnet) {
+      const network = process.env['HEDERA_NETWORK'] ?? '';
+      if (network !== 'mainnet') {
+        throw new Error(
+          `requireMainnet:true requires HEDERA_NETWORK=mainnet (no implicit mainnet default). Got: "${network || '(missing)'}"`,
+        );
+      }
+    } else {
+      const network = process.env['HEDERA_NETWORK'] ?? '';
+      if (network !== 'testnet') {
+        throw new Error(
+          `requireMainnet:false requires HEDERA_NETWORK=testnet (no implicit mainnet default). Got: "${network || '(missing)'}"`,
+        );
+      }
     }
   }
 
@@ -56,11 +67,12 @@ export class HederaPaymentRail implements PaymentRail {
     }
     try {
       await this._init();
-      const r = await this._client!.transferHbar(toAccountId, amountHbar, memo);
+      const token = issueRailPassedToken(resolved);
+      const r = await this._client!.transferHbar(toAccountId, amountHbar, memo, token);
       return {
         status: 'success',
         transactionId: r.transactionId,
-        network: process.env['HEDERA_NETWORK'] ?? 'mainnet',
+        network: process.env['HEDERA_NETWORK'] ?? 'unknown',
         amountHbar,
         recipient: toAccountId,
         consensusTimestampMs: r.consensusTimestampMs,
